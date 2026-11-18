@@ -1,0 +1,6 @@
+- [x] clipper.py: discover, inbox, highlight pick, 9:16 render, YT upload, TikTok queue
+- [x] Actions workflow, sources.yaml, state.json
+- [x] Render test on synthetic video
+- [ ] User: join Content Rewards GTA 6 campaign, add source/permission
+- [ ] User: YT OAuth secrets + API audit
+- [ ] First live run, verify download + upload

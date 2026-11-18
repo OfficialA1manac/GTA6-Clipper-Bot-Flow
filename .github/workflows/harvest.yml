@@ -1,0 +1,31 @@
+name: harvest
+on:
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: harvest
+  cancel-in-progress: false
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python harvest.py
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+          TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+      - run: |
+          git config user.name clipper-bot; git config user.email clipper-bot@users.noreply.github.com
+          git add creators/registry.csv
+          if ! git diff --cached --quiet; then
+            git commit -m "registry: $(($(wc -l < creators/registry.csv)-1)) creators"
+            for i in 1 2 3; do git pull --rebase -X theirs && git push && break || sleep 5; done
+          fi

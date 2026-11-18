@@ -1,0 +1,42 @@
+{
+  "name": "GTA6 scanner (every 10 min)",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 10}]}},
+      "name": "Every 10 min", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [0, 0]
+    },
+    {
+      "parameters": {"jsCode": "// EDIT: your permissioned sources. channel_id starts with UC...\nconst sources = [\n  { name: 'ExampleStreamer', channel_id: 'UCxxxxxxxxxxxxxxxxxxxxxx' }\n];\nreturn sources.map(s => ({ json: { ...s, feed: 'https://www.youtube.com/feeds/videos.xml?channel_id=' + s.channel_id } }));"},
+      "name": "Sources", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [220, 0]
+    },
+    {
+      "parameters": {"url": "={{ $json.feed }}", "options": {"response": {"response": {"responseFormat": "text"}}}},
+      "name": "Fetch feed", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [440, 0]
+    },
+    {
+      "parameters": {"jsCode": "const store = $getWorkflowStaticData('global');\nstore.seen = store.seen || [];\nconst src = $('Sources').all();\nconst maxAgeMs = 72 * 3600 * 1000;\nconst kw = /gta\\s*(6|vi)\\b|grand theft auto\\s*(6|vi)\\b|leonida/i;\nconst skip = /leak|pre-?release/i;\nconst out = [];\n$input.all().forEach((it, i) => {\n  const xml = typeof it.json.data === 'string' ? it.json.data : JSON.stringify(it.json);\n  const channel = src[i] ? src[i].json.name : 'unknown';\n  for (const m of xml.matchAll(/<entry>([\\s\\S]*?)<\\/entry>/g)) {\n    const e = m[1];\n    const id = (e.match(/<yt:videoId>([^<]+)</) || [])[1];\n    const title = ((e.match(/<title>([^<]*)</) || [])[1] || '').replace(/&amp;/g, '&').replace(/&#39;/g, \"'\").replace(/&quot;/g, '\"');\n    const pub = Date.parse((e.match(/<published>([^<]+)</) || [])[1]);\n    if (!id || store.seen.includes(id) || !kw.test(title) || skip.test(title) || Date.now() - pub > maxAgeMs) continue;\n    store.seen.push(id);\n    out.push({ json: { id, title, channel, url: 'https://www.youtube.com/watch?v=' + id } });\n  }\n});\nstore.seen = store.seen.slice(-2000);\nreturn out;"},
+      "name": "New GTA6 videos", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/OWNER/REPO/actions/workflows/clipper.yml/dispatches",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [
+          {"name": "Authorization", "value": "Bearer YOUR_GITHUB_TOKEN"},
+          {"name": "Accept", "value": "application/vnd.github+json"}
+        ]},
+        "sendBody": true, "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ ref: 'main', inputs: { url: $json.url, channel: $json.channel, title: $json.title } }) }}"
+      },
+      "name": "Dispatch clipper", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [880, 0]
+    }
+  ],
+  "connections": {
+    "Every 10 min": {"main": [[{"node": "Sources", "type": "main", "index": 0}]]},
+    "Sources": {"main": [[{"node": "Fetch feed", "type": "main", "index": 0}]]},
+    "Fetch feed": {"main": [[{"node": "New GTA6 videos", "type": "main", "index": 0}]]},
+    "New GTA6 videos": {"main": [[{"node": "Dispatch clipper", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}

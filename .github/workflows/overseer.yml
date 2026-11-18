@@ -1,0 +1,53 @@
+name: overseer
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+  issues: write
+concurrency:
+  group: overseer
+  cancel-in-progress: false
+jobs:
+  oversee:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: check posted videos
+        run: python clipper.py check > report.md
+      - name: workflow health
+        run: |
+          fails=0
+          for wf in clip.yml scan.yml; do
+            f=$(gh run list --workflow "$wf" --limit 3 --json conclusion --jq '[.[]|select(.conclusion=="failure")]|length')
+            fails=$((fails+f))
+          done
+          echo "- Recent workflow failures (last 3 runs each): $fails" >> report.md
+          if [ "$fails" -gt 0 ]; then sed -i '1s/^OK/ALERT/' report.md; fi
+      - name: publish status issue
+        run: |
+          num=$(gh issue list --state open --search 'in:title "Pipeline status"' --json number --jq '.[0].number')
+          if [ -z "$num" ]; then num=$(gh issue create --title "Pipeline status" --body-file report.md | grep -o '[0-9]*$'); fi
+          gh issue edit "$num" --body-file report.md
+          if head -1 report.md | grep -q '^ALERT'; then gh issue comment "$num" --body-file report.md; fi
+      - name: save state
+        run: |
+          git config user.name clipper-bot; git config user.email clipper-bot@users.noreply.github.com
+          git add state/health.json
+          if ! git diff --cached --quiet; then
+            git commit -m "state: health"
+            for i in 1 2 3; do git pull --rebase -X theirs && git push && break || sleep 5; done
+          fi

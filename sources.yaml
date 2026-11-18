@@ -1,0 +1,17 @@
+settings:
+  clip_seconds: 40          # Shorts length
+  clips_per_video: 2        # best moments per source video
+  max_age_hours: 72         # ignore older uploads
+  max_source_minutes: 90    # skip longer VODs (download size)
+  max_posts_per_day: 5      # YouTube upload quota + anti-spam
+  # Titles containing these are skipped. Endings, cutscenes, cheats and mods are allowed per your call
+  # (Rockstar's policy lets it remove them; risk is on the account). Leaks stay blocked: unreleased/stolen footage.
+  skip_title_words: [leak, leaked, pre-release, prerelease]
+  upload_youtube: true
+
+# ONLY add sources you have permission to clip. The pipeline skips any entry without `permission`.
+# Valid permission = an active Content Rewards/Vyro campaign that covers that creator, written OK from the creator, or your own channel.
+sources: []
+# - name: ExampleStreamer
+#   channel_id: UCxxxxxxxxxxxxxxxxxxxxxx
+#   permission: "Content Rewards campaign <link> allows GTA 6 clipping"
