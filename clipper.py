@@ -106,41 +106,96 @@ def discover(cfg, seen, paused, cursor=0, batch=300):
     return jobs, (start + len(chunk)) % len(srcs)
 
 
-def search_jobs(cfg, srcs, seen, paused):
-    """Content search flow: newest 'GTA 6' videos across YouTube, kept only if the channel is permitted.
-    Every 30 min (100 quota units per call)."""
-    key = os.environ.get("YT_API_KEY")
-    if not key or int(time.time() // 600) % 3:
-        return []
-    byid = {x["channel_id"]: x for x in srcs if x["name"] not in paused}
-    if not byid:
-        return []
-    blocked = blocked_re(cfg["settings"])
-    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 3 * 3600))
-    q = urllib.parse.urlencode(dict(part="snippet", q="GTA 6", type="video", order="date", maxResults=50,
-                                    publishedAfter=since, key=key))
+CRAWL_QUERIES = ["GTA 6", "GTA VI gameplay", "GTA 6 funny moments", "GTA 6 reaction", "GTA 6 stream"]
+
+
+def ytdlp_list(target, n):
+    """Crawl a search/channel page with yt-dlp (no download, no API key). Returns entry dicts."""
     try:
-        data = json.load(urllib.request.urlopen(f"https://www.googleapis.com/youtube/v3/search?{q}", timeout=30))
+        r = subprocess.run(["yt-dlp", "--flat-playlist", "--dump-json", "--no-warnings",
+                            "--playlist-end", str(n), target], capture_output=True, text=True, timeout=180)
     except Exception as e:
-        log(f"search fail: {e}"); return []
-    jobs = []
-    for it in data.get("items", []):
-        cid, vid = it["snippet"]["channelId"], it["id"].get("videoId")
-        title = html.unescape(it["snippet"]["title"])
-        if not vid or cid not in byid or vid in seen or not KEYWORDS.search(title):
-            continue
-        if blocked and blocked.search(title):
-            continue
-        jobs.append(dict(id=vid, title=title, channel=byid[cid]["name"], pub=time.time(),
-                         url=f"https://www.youtube.com/watch?v={vid}", path=None))
-    return jobs
+        log(f"crawl fail {target}: {e}"); return []
+    out = []
+    for line in r.stdout.splitlines():
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            pass
+    return out
+
+
+def crawl(cfg, srcs, seen, paused):
+    """Search YouTube for the newest GTA 6 videos. Every hit is logged as a lead (link for you);
+    only hits from permitted channels become clip jobs."""
+    blocked = blocked_re(cfg["settings"])
+    perm = {x["channel_id"]: x for x in srcs if x["name"] not in paused}
+    leads, jobs, got = [], [], set()
+    for q in cfg["settings"].get("crawl_queries") or CRAWL_QUERIES:
+        for e in ytdlp_list(f"ytsearchdate25:{q}", 25):
+            vid, title = e.get("id"), html.unescape(e.get("title") or "")
+            if not vid or vid in got or not KEYWORDS.search(title):
+                continue
+            got.add(vid)
+            cid = e.get("channel_id") or ""
+            leads.append(dict(id=vid, title=title, channel=e.get("channel") or e.get("uploader") or "",
+                              channel_id=cid, url=f"https://www.youtube.com/watch?v={vid}",
+                              views=e.get("view_count"), permitted=cid in perm, found=int(time.time())))
+            if cid in perm and vid not in seen and not (blocked and blocked.search(title)):
+                jobs.append(dict(id=vid, title=title, channel=perm[cid]["name"], pub=time.time(),
+                                 url=f"https://www.youtube.com/watch?v={vid}", path=None))
+    return leads, jobs
+
+
+def registry_twitch():
+    p = ROOT / "creators" / "registry.csv"
+    if not p.exists():
+        return []
+    with p.open(encoding="utf-8", newline="") as f:
+        return [{"name": r["name"], "login": r["twitch_login"]} for r in csv.DictReader(f)
+                if (r.get("permission") or "").strip() and r.get("twitch_login")]
+
+
+def crawl_twitch(cfg, cursor, paused, seen, batch=20):
+    """Newest VODs of permitted Twitch creators whose titles mention GTA 6 (rotating batch)."""
+    rows = [r for r in registry_twitch() if r["name"] not in paused]
+    if not rows:
+        return [], [], 0
+    blocked = blocked_re(cfg["settings"])
+    start = cursor % len(rows)
+    chunk = (rows[start:] + rows[:start])[:batch]
+    leads, jobs = [], []
+    for r in chunk:
+        for e in ytdlp_list(f"https://www.twitch.tv/{r['login']}/videos?filter=archives&sort=time", 5):
+            vid, title = str(e.get("id") or "").lstrip("v"), html.unescape(e.get("title") or "")
+            if not vid or not KEYWORDS.search(title):
+                continue
+            url = e.get("url") or f"https://www.twitch.tv/videos/{vid}"
+            leads.append(dict(id=f"tw{vid}", title=title, channel=r["name"], channel_id="", url=url,
+                              views=e.get("view_count"), permitted=True, found=int(time.time())))
+            if f"tw{vid}" not in seen and not (blocked and blocked.search(title)):
+                jobs.append(dict(id=f"tw{vid}", title=title, channel=r["name"], pub=time.time(), url=url, path=None))
+    return leads, jobs, (start + len(chunk)) % len(rows)
+
+
+def save_leads(new):
+    old = sload("leads", {"leads": []})["leads"]
+    merged = {l["id"]: l for l in old}
+    for l in new:
+        merged[l["id"]] = {**merged.get(l["id"], {}), **l}
+    out = sorted(merged.values(), key=lambda l: -l.get("found", 0))[:500]
+    ssave("leads", {"leads": out})
 
 
 def scan(cfg):
-    st = sload("seen", {"seen": [], "cursor": 0})
+    st = sload("seen", {"seen": [], "cursor": 0, "tcursor": 0})
     seen, paused = set(st["seen"]), paused_channels()
+    srcs = permitted_sources(cfg)
     jobs, st["cursor"] = discover(cfg, seen, paused, st.get("cursor", 0))
-    jobs += search_jobs(cfg, permitted_sources(cfg), seen, paused)
+    leads, cj = crawl(cfg, srcs, seen, paused)
+    tl, tj, st["tcursor"] = crawl_twitch(cfg, st.get("tcursor", 0), paused, seen)
+    save_leads(leads + tl)
+    jobs += cj + tj
     uniq = {j["id"]: j for j in jobs}
     jobs = sorted(uniq.values(), key=lambda j: -j["pub"])
     if jobs:
@@ -157,6 +212,10 @@ def inbox_jobs():
 
 
 def url_job(url, channel, title):
+    t = re.search(r"twitch\.tv/videos/(\d+)", url)
+    if t:
+        return dict(id=f"tw{t.group(1)}", title=title or "GTA 6", channel=channel or "manual", pub=time.time(),
+                    url=url, path=None)
     m = re.search(r"(?:v=|youtu\.be/|shorts/)([\w-]{11})", url)
     if not m:
         raise SystemExit(f"bad YouTube url: {url}")
@@ -320,7 +379,7 @@ def run(cfg, url, channel, title, inbox):
                 title_ = f"{hook} #GTA6 #Shorts"
                 desc = (f"Clip from {j['channel']} (used with permission): {j['url']}\n\n"
                         "#GTA6 #GTAVI #Shorts").strip()
-                entry = {"t": time.time(), "src": j["id"], "channel": j["channel"], "file": f.name}
+                entry = {"t": time.time(), "src": j["id"], "channel": j["channel"], "file": f.name, "url": j["url"]}
                 if s.get("upload_youtube") and os.environ.get("YT_REFRESH_TOKEN"):
                     entry["yt_id"] = post_youtube(f, title_, desc); log("YT", entry["yt_id"])
                 if os.environ.get("TT_REFRESH_TOKEN"):
@@ -384,12 +443,18 @@ def check():
     srcs = {}
     for p in posted:
         if now - p["t"] < DAY and p.get("src") and not p["src"].startswith("inbox-"):
-            srcs[p["src"]] = p["channel"]
+            srcs[p.get("url") or f"https://www.youtube.com/watch?v={p['src']}"] = p["channel"]
     print("\n**Clipped from (last 24h)**")
-    for sid, ch in srcs.items():
-        print(f"- {ch}: https://www.youtube.com/watch?v={sid}")
+    for u, ch in srcs.items():
+        print(f"- {ch}: {u}")
     if not srcs:
         print("- none")
+    leads = sload("leads", {"leads": []})["leads"][:15]
+    print("\n**Newest GTA 6 videos found by the crawler**")
+    for l in leads:
+        print(f"- {'[permitted] ' if l.get('permitted') else ''}{l['title'][:70]} - {l['channel']}: {l['url']}")
+    if not leads:
+        print("- none yet")
 
 
 # ---------- cli ----------

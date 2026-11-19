@@ -31,7 +31,7 @@ jobs:
         env:
           YT_API_KEY: ${{ secrets.YT_API_KEY }}
         run: |
-          pip install -q pyyaml
+          pip install -q pyyaml yt-dlp
           echo "job=$(python clipper.py scan)" >> "$GITHUB_OUTPUT"
       - name: dispatch worker
         if: steps.busy.outputs.n == '0' && steps.scan.outputs.job != ''
@@ -43,7 +43,7 @@ jobs:
         if: steps.busy.outputs.n == '0'
         run: |
           git config user.name clipper-bot; git config user.email clipper-bot@users.noreply.github.com
-          git add state/seen.json
+          git add state/seen.json state/leads.json
           if ! git diff --cached --quiet; then
             git commit -m "state: seen"
             for i in 1 2 3; do git pull --rebase -X theirs && git push && break || sleep 5; done
