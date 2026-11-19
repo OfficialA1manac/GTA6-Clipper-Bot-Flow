@@ -106,7 +106,8 @@ def discover(cfg, seen, paused, cursor=0, batch=300):
     return jobs, (start + len(chunk)) % len(srcs)
 
 
-CRAWL_QUERIES = ["GTA 6", "GTA VI gameplay", "GTA 6 funny moments", "GTA 6 reaction", "GTA 6 stream"]
+CRAWL_QUERIES = ["GTA 6", "GTA VI", "GTA 6 gameplay", "GTA 6 funny moments", "GTA 6 reaction", "GTA 6 stream",
+                 "GTA 6 roleplay", "GTA 6 online", "GTA 6 police chase", "GTA 6 map", "GTA 6 clips", "GTA 6 highlights"]
 
 
 def ytdlp_list(target, n):
@@ -454,6 +455,16 @@ def check():
     for l in leads:
         print(f"- {'[permitted] ' if l.get('permitted') else ''}{l['title'][:70]} - {l['channel']}: {l['url']}")
     if not leads:
+        print("- none yet")
+    ask = {}
+    for l in sload("leads", {"leads": []})["leads"]:
+        if not l.get("permitted") and l.get("channel_id"):
+            c = ask.setdefault(l["channel_id"], {"name": l["channel"], "n": 0})
+            c["n"] += 1
+    print("\n**Ask these creators for clip permission (most GTA 6 uploads first)**")
+    for cid, c in sorted(ask.items(), key=lambda kv: -kv[1]["n"])[:10]:
+        print(f"- {c['name']} ({c['n']} videos): https://www.youtube.com/channel/{cid}")
+    if not ask:
         print("- none yet")
 
 
