@@ -7,6 +7,7 @@ services:
       - {key: X264_PRESET, value: ultrafast}
       - {key: NO_CAPTIONS, value: "1"}
       - {key: SCAN_EVERY, value: "300"}
+      - {key: ADMIN_KEY, generateValue: true}
       - {key: YT_API_KEY, sync: false}
       - {key: YT_CLIENT_ID, sync: false}
       - {key: YT_CLIENT_SECRET, sync: false}
