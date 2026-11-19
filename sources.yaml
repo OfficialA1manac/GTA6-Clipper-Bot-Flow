@@ -2,7 +2,8 @@ settings:
   clip_seconds: 65         # every clip is at least 1:00 (minimum enforced in code)
   clips_per_video: 2        # best moments per source video
   max_age_hours: 72         # ignore older uploads
-  max_source_minutes: 90    # skip longer VODs (download size)
+  max_source_minutes: 90    # videos longer than this are treated as streams: audio is scanned, only the best moments are downloaded
+  max_clips_per_stream: 6   # best moments taken from one long stream/VOD
   max_posts_per_day: 15     # total clips posted per 24h
   max_youtube_per_day: 6    # default YouTube API quota fits ~6 uploads/day (more needs a Google quota increase)
   max_tiktok_per_day: 15    # TikTok Content Posting API cap per account

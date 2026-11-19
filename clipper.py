@@ -24,6 +24,17 @@ FONTS = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 DAY = 86400
 
 
+PERMITTED_KW = re.compile(r"\bgta\b|grand theft auto|vice city|leonida|gta\s*(6|vi)\b", re.I)
+NOT_GTA6 = re.compile(r"gta\s*(5|v)\b|gtav\b|gta\s*online|fivem|san andreas|\bgta\s*iv\b|gta\s*4", re.I)
+
+
+def wanted_title(title):
+    """Permitted creators: any GTA 6 / GTA title, but not GTA V, Online, FiveM and older games."""
+    if KEYWORDS.search(title):
+        return True
+    return bool(PERMITTED_KW.search(title)) and not NOT_GTA6.search(title)
+
+
 def log(*a):
     print(*a, file=sys.stderr, flush=True)
 
@@ -132,7 +143,7 @@ def discover(cfg, seen, paused, cursor=0, batch=300):
             vid = e.findtext(YTNS + "videoId")
             title = e.findtext(ATOM + "title") or ""
             pub = time.mktime(time.strptime(e.findtext(ATOM + "published")[:19], "%Y-%m-%dT%H:%M:%S"))
-            if vid in seen or pub < cutoff or not KEYWORDS.search(title):
+            if vid in seen or pub < cutoff or not wanted_title(title):
                 continue
             if blocked and blocked.search(title):
                 log(f"SKIP (skip_title_words): {title}"); continue
@@ -206,7 +217,7 @@ def crawl_twitch(cfg, cursor, paused, seen, batch=20):
     for r in chunk:
         for e in ytdlp_list(f"https://www.twitch.tv/{r['login']}/videos?filter=archives&sort=time", 5):
             vid, title = str(e.get("id") or "").lstrip("v"), html.unescape(e.get("title") or "")
-            if not vid or not KEYWORDS.search(title):
+            if not vid or not wanted_title(title):
                 continue
             url = e.get("url") or f"https://www.twitch.tv/videos/{vid}"
             leads.append(dict(id=f"tw{vid}", title=title, channel=r["name"], channel_id="", url=url,
@@ -272,6 +283,60 @@ def download(job, max_min):
     return dest
 
 
+def ts(sec):
+    sec = int(max(0, sec))
+    return f"{sec // 3600:02d}:{sec % 3600 // 60:02d}:{sec % 60:02d}"
+
+
+def probe(url):
+    try:
+        r = subprocess.run(["yt-dlp", "--no-playlist", "--print", "%(live_status)s|%(duration)s", url],
+                           capture_output=True, text=True, timeout=120)
+        st, _, d = (r.stdout.strip().splitlines() or ["|"])[-1].partition("|")
+        return st, float(d) if d not in ("", "NA", "None") else 0.0
+    except Exception as ex:
+        log("probe failed:", ex); return "", 0.0
+
+
+def download_audio(job):
+    d = OUT / "raw"; d.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["yt-dlp", "-f", "ba[abr<=70]/wa/ba", "--no-playlist", "-o", str(d / f"{job['id']}_a.%(ext)s"), job["url"]], check=True)
+    return next(d.glob(f"{job['id']}_a.*"))
+
+
+def fetch_section(job, a, b, k):
+    dest = OUT / "raw" / f"{job['id']}_s{k}.mp4"
+    subprocess.run(["yt-dlp", "-f", "bv*[height<=1080]+ba/b", "--merge-output-format", "mp4", "--no-playlist",
+                    "--download-sections", f"*{ts(a)}-{ts(b)}", "--force-keyframes-at-cuts", "-o", str(dest), job["url"]], check=True)
+    return dest
+
+
+def plan_clips(j, s, clip_len):
+    """Returns [(source_file, energy, k, start_seconds)]. Long streams: scan audio first, download only the best moments.
+    Streams that are live right now are skipped until they end (then they are normal VODs)."""
+    def whole(src):
+        if duration(src) < clip_len + 5:
+            log("source shorter than", clip_len, "s; skipped"); return []
+        e = energy(src)
+        return [(src, e, k, st) for k, st in enumerate(pick(e, s["clips_per_video"], clip_len))]
+    if j["path"]:
+        return whole(Path(j["path"]))
+    status, dur = probe(j["url"])
+    if status in ("is_live", "is_upcoming"):
+        log("live right now; will clip it after it ends:", j["url"]); return []
+    if dur <= s["max_source_minutes"] * 60:
+        return whole(download(j, s["max_source_minutes"]))
+    count = min(s.get("max_clips_per_stream", 6), max(s["clips_per_video"], int(dur // 1800)))
+    starts = pick(energy(download_audio(j)), count, clip_len)
+    plans = []
+    for k, st in enumerate(starts):
+        a = max(0, st - 15)
+        sec = fetch_section(j, a, st + clip_len + 15, k)
+        plans.append((sec, energy(sec), k, st - a))
+    log(f"long stream ({int(dur // 60)} min): {len(plans)} moments")
+    return plans
+
+
 # ---------- highlights + render ----------
 def energy(path):
     import numpy as np
@@ -286,7 +351,10 @@ def pick(e, count, length):
     import numpy as np
     if len(e) <= length:
         return [0]
-    score = np.convolve(e, np.ones(length) / length, mode="valid") / (np.median(e) + 1e-6)
+    med = np.median(e) + 1e-6
+    onset = np.clip(np.diff(e, prepend=e[0]), 0, None)  # sudden jumps = screams, laughs, reactions
+    k = np.ones(length) / length
+    score = np.convolve(e, k, mode="valid") / med + 2.0 * np.convolve(onset, k, mode="valid") / med
     out = []
     for _ in range(count):
         i = int(score.argmax())
@@ -412,12 +480,8 @@ def run(cfg, url, channel, title, inbox):
         jobs = [j]
     for j in jobs:
         try:
-            src = j["path"] or download(j, s["max_source_minutes"])
             clip_len = max(61, int(s["clip_seconds"]))
-            if duration(src) < clip_len + 5:
-                log("source shorter than", clip_len, "s; skipped"); continue
-            e = energy(src)
-            for k, start in enumerate(pick(e, s["clips_per_video"], clip_len)):
+            for src, e, k, start in plan_clips(j, s, clip_len):
                 recent = [p for p in posted["posted"] if time.time() - p["t"] < DAY]
                 yt_n = sum(1 for p in recent if p.get("yt_id"))
                 tt_n = sum(1 for p in recent if p.get("tt_id"))
@@ -439,8 +503,8 @@ def run(cfg, url, channel, title, inbox):
                 if tt_ok:
                     try:
                         entry["tt_id"] = post_tiktok(f, f"{hook} #gta6 #gtavi #fyp"); log("TT", entry["tt_id"])
-                    except Exception as e:
-                        log(f"TikTok post failed: {e}")
+                    except Exception as ex:
+                        log(f"TikTok post failed: {ex}")
                 if "yt_id" in entry or "tt_id" in entry:
                     posted["posted"] = (posted["posted"] + [entry])[-1000:]
                     ssave("posted", posted)
