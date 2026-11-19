@@ -136,10 +136,38 @@ def harvest_twitch(reg):
     log(f"twitch: {seen} live streams seen, {new} new")
 
 
+def load_seed(reg):
+    f = REG.parent / "seed.txt"
+    if f.exists():
+        for line in f.read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.startswith("#"):
+                add(reg, line.strip(), "seed", 0)
+
+
+def resolve_seeds(reg, limit=20):
+    """Find the YouTube channel id of seed names (100 quota units each)."""
+    n = 0
+    for r in reg.values():
+        if n >= limit:
+            break
+        if r["platforms"] == "seed" and not r["yt_channel_id"]:
+            n += 1
+            try:
+                it = yt("search", part="snippet", q=r["name"], type="channel", maxResults=1).get("items", [])
+            except urllib.error.HTTPError:
+                break
+            if it:
+                r["yt_channel_id"] = it[0]["snippet"]["channelId"]
+                r["platforms"] = "seed|youtube"
+    log(f"seeds resolved this run: {n}")
+
+
 def main():
     reg = load()
     before = len(reg)
+    load_seed(reg)
     if os.environ.get("YT_API_KEY"):
+        resolve_seeds(reg)
         harvest_youtube(reg)
     if os.environ.get("TWITCH_CLIENT_ID") and os.environ.get("TWITCH_CLIENT_SECRET"):
         harvest_twitch(reg)
