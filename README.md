@@ -21,3 +21,9 @@ Platforms keep unaudited API apps private until their audit passes.
 
 ## Retention edit (fx.py)
 Every clip gets: opening hook text + "WAIT FOR THE END", zoom punch-ins on the loudest moments, synthesized sound effects (boom, honk, ding, womp, pop, whoosh; generated locally, no copyright), red reaction text, word-by-word captions (faster-whisper, profanity masked), and a progress bar that fills across the clip.
+
+## Run without GitHub Actions (serve.py)
+`python serve.py` runs everything in one loop (scan every 10 min, clip, upload, harvest every 6h, hourly status in `out/status.md`). Put your keys in a `.env` file next to it (`YT_API_KEY=...`, one per line, same names as the GitHub secrets).
+- Any free always-on machine works: Oracle Cloud Always Free VM, an old PC, or Termux on Android (`pkg install python ffmpeg git`, then `pip install -r requirements.txt`).
+- Docker: `docker build -t gta6 . && docker run -d --restart always --env-file .env -v $PWD/state:/app/state -v $PWD/out:/app/out gta6`
+- Text alerts via Twilio work the same; without Twilio read `out/status.md`.
