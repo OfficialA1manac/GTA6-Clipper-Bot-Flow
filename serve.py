@@ -43,8 +43,24 @@ def tick_check():
     print(r.stdout[-1500:], flush=True)
 
 
+def web():
+    """Tiny status page so free web hosts (Render etc.) see an open port; ping it every 10 min to keep the host awake."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            f = ROOT / "out" / "status.md"
+            body = (f.read_text() if f.exists() else "running").encode()
+            self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *a): pass
+    threading.Thread(target=HTTPServer(("0.0.0.0", int(os.environ["PORT"])), H).serve_forever, daemon=True).start()
+
+
 if __name__ == "__main__":
     load_env()
+    if os.environ.get("PORT"):
+        web()
     last = {"harvest": 0, "check": 0}
     while True:
         now = time.time()

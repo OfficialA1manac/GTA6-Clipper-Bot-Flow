@@ -1,6 +1,6 @@
 """Retention edit for clips: punch-in zooms, synthesized sound effects, reaction text, word captions, progress bar.
 All sound effects are generated here with ffmpeg (no downloaded audio, so no copyright issues)."""
-import random, re, subprocess, tempfile
+import os, random, re, subprocess, tempfile
 from pathlib import Path
 
 SFX_DIR = Path(tempfile.gettempdir()) / "gta6_sfx"
@@ -40,6 +40,8 @@ def peaks(e, start, length, n=4, gap=6):
 
 def words(src, start, length):
     """Word timings via faster-whisper if installed; [] otherwise."""
+    if os.environ.get("NO_CAPTIONS"):
+        return []
     try:
         from faster_whisper import WhisperModel
     except Exception:
@@ -102,7 +104,7 @@ def render(src, start, length, dest, hook, e, font, seed=0):
         af.append(f"[{i}:a]adelay={int(t*1000)}|{int(t*1000)},volume=0.8[s{i}]"); mix.append(f"[s{i}]")
     af.append("".join(mix) + f"amix=inputs={len(mix)}:duration=first:dropout_transition=0,alimiter=limit=0.95[aout]")
     cmd += ["-filter_complex", ";".join(fc + af), "-map", f"[{last}]", "-map", "[aout]", "-t", str(length), "-r", "30",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+            "-c:v", "libx264", "-preset", os.environ.get("X264_PRESET", "veryfast"), "-crf", "23", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dest)]
     try:
         subprocess.run(cmd, check=True)

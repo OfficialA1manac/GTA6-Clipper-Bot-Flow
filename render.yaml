@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: gta6-clipper
+    runtime: docker
+    plan: free
+    envVars:
+      - {key: X264_PRESET, value: ultrafast}
+      - {key: NO_CAPTIONS, value: "1"}
+      - {key: SCAN_EVERY, value: "300"}
+      - {key: YT_API_KEY, sync: false}
+      - {key: YT_CLIENT_ID, sync: false}
+      - {key: YT_CLIENT_SECRET, sync: false}
+      - {key: YT_REFRESH_TOKEN, sync: false}
+      - {key: TWITCH_CLIENT_ID, sync: false}
+      - {key: TWITCH_CLIENT_SECRET, sync: false}
+      - {key: TT_CLIENT_KEY, sync: false}
+      - {key: TT_CLIENT_SECRET, sync: false}
+      - {key: TT_REFRESH_TOKEN, sync: false}
+      - {key: DISCORD_WEBHOOK, sync: false}
