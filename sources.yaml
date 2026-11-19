@@ -3,7 +3,9 @@ settings:
   clips_per_video: 2        # best moments per source video
   max_age_hours: 72         # ignore older uploads
   max_source_minutes: 90    # skip longer VODs (download size)
-  max_posts_per_day: 5      # YouTube upload quota + anti-spam
+  max_posts_per_day: 15     # total clips posted per 24h
+  max_youtube_per_day: 6    # default YouTube API quota fits ~6 uploads/day (more needs a Google quota increase)
+  max_tiktok_per_day: 15    # TikTok Content Posting API cap per account
   # Titles containing these are skipped. Endings, cutscenes, cheats and mods are allowed per your call
   # (Rockstar's policy lets it remove them; risk is on the account). Leaks stay blocked: unreleased/stolen footage.
   skip_title_words: [leak, leaked, pre-release, prerelease]

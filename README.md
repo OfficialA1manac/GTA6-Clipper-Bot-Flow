@@ -5,7 +5,7 @@ Public repo = unlimited free Actions minutes. Secrets stay private.
 |---|---|---|
 | harvest.yml | every 6h | grows `creators/registry.csv` toward 50,000 unique creators (YouTube trending + GTA searches, Twitch live streams). One row per creator NAME across all platforms. |
 | scan.yml | every 10 min | crawler (no API key): searches YouTube for the newest GTA 6 videos, checks permitted creators' feeds and Twitch VODs; every video found is logged to `state/leads.json` (shown in the Pipeline status issue); only permitted creators' videos are sent to the worker, one at a time |
-| clip.yml | on dispatch | download -> loudest moments -> 9:16 -> post YouTube + TikTok (max 5/day) |
+| clip.yml | on dispatch | download -> loudest moments -> 9:16 -> post YouTube + TikTok (up to 15/day: 6 YouTube, 15 TikTok) |
 | overseer.yml | hourly | checks posted videos still live, pauses sources after 2 removals/30d, updates the "Pipeline status" issue with links clipped in the last 24h |
 
 ## Setup

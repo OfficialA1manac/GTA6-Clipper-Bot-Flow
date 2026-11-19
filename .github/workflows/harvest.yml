@@ -24,7 +24,7 @@ jobs:
           TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
       - run: |
           git config user.name clipper-bot; git config user.email clipper-bot@users.noreply.github.com
-          git add creators/registry.csv
+          git add creators/
           if ! git diff --cached --quiet; then
             git commit -m "registry: $(($(wc -l < creators/registry.csv)-1)) creators"
             for i in 1 2 3; do git pull --rebase -X theirs && git push && break || sleep 5; done

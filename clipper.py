@@ -407,20 +407,25 @@ def run(cfg, url, channel, title, inbox):
         try:
             src = j["path"] or download(j, s["max_source_minutes"])
             for k, start in enumerate(pick(energy(src), s["clips_per_video"], s["clip_seconds"])):
-                today = sum(1 for p in posted["posted"] if time.time() - p["t"] < DAY)
+                recent = [p for p in posted["posted"] if time.time() - p["t"] < DAY]
+                yt_n = sum(1 for p in recent if p.get("yt_id"))
+                tt_n = sum(1 for p in recent if p.get("tt_id"))
+                yt_ok = s.get("upload_youtube") and os.environ.get("YT_REFRESH_TOKEN") \
+                    and yt_n < s.get("max_youtube_per_day", 6)
+                tt_ok = os.environ.get("TT_REFRESH_TOKEN") and tt_n < s.get("max_tiktok_per_day", 15)
                 hook = re.sub(r"(?i)\bgta\s*(6|vi)\b|[|\-–—:]", " ", j["title"]).strip()[:70]
                 f = render(src, start, s["clip_seconds"], OUT / "clips" / f"{j['id']}_{k}.mp4", hook)
                 queue_tiktok(f, f"{hook} #gta6 #gtavi #fyp")
                 notify(f"New clip from {j['channel']}\nSource: {j['url'] or j['id']}\nClip file: Actions > clip run > 'clips' artifact\nCaption: {hook} #gta6 #gtavi")
-                if today >= s["max_posts_per_day"]:
-                    log("daily cap reached; clip queued only"); continue
+                if len(recent) >= s["max_posts_per_day"] or not (yt_ok or tt_ok):
+                    log("daily cap reached or no upload keys; clip queued only"); continue
                 title_ = f"{hook} #GTA6 #Shorts"
                 desc = (f"Clip from {j['channel']} (used with permission): {j['url']}\n\n"
                         "#GTA6 #GTAVI #Shorts").strip()
                 entry = {"t": time.time(), "src": j["id"], "channel": j["channel"], "file": f.name, "url": j["url"]}
-                if s.get("upload_youtube") and os.environ.get("YT_REFRESH_TOKEN"):
+                if yt_ok:
                     entry["yt_id"] = post_youtube(f, title_, desc); log("YT", entry["yt_id"])
-                if os.environ.get("TT_REFRESH_TOKEN"):
+                if tt_ok:
                     try:
                         entry["tt_id"] = post_tiktok(f, f"{hook} #gta6 #gtavi #fyp"); log("TT", entry["tt_id"])
                     except Exception as e:

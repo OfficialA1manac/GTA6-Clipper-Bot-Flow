@@ -162,10 +162,59 @@ def resolve_seeds(reg, limit=20):
     log(f"seeds resolved this run: {n}")
 
 
+def resolve_listed(reg, limit=40):
+    """Rows you listed as permitted but without channel ids: find the channel by EXACT name match only.
+    Anything that does not match exactly goes to creators/unresolved.txt so a wrong channel is never permitted."""
+    todo = [r for r in reg.values() if r["permission"] and not r["yt_channel_id"] and not r["twitch_login"]][:limit]
+    log_lines, unresolved = [], []
+    tw = None
+    if os.environ.get("TWITCH_CLIENT_ID") and os.environ.get("TWITCH_CLIENT_SECRET"):
+        tok = json.load(urllib.request.urlopen(urllib.request.Request(
+            "https://id.twitch.tv/oauth2/token", method="POST", data=urllib.parse.urlencode({
+                "client_id": os.environ["TWITCH_CLIENT_ID"], "client_secret": os.environ["TWITCH_CLIENT_SECRET"],
+                "grant_type": "client_credentials"}).encode())))["access_token"]
+        hdr = {"Client-Id": os.environ["TWITCH_CLIENT_ID"], "Authorization": f"Bearer {tok}"}
+        tw = lambda **p: json.load(urllib.request.urlopen(urllib.request.Request(
+            "https://api.twitch.tv/helix/search/channels?" + urllib.parse.urlencode(p), headers=hdr), timeout=30))
+    for r in todo:
+        found = False
+        if os.environ.get("YT_API_KEY"):
+            try:
+                for it in yt("search", part="snippet", q=r["name"], type="channel", maxResults=5).get("items", []):
+                    if norm(it["snippet"]["channelTitle"]) == norm(r["name"]):
+                        r["yt_channel_id"] = it["snippet"]["channelId"]
+                        r["platforms"] = "|".join(sorted(set(r["platforms"].split("|")) | {"youtube"}))
+                        log_lines.append(f"- {r['name']}: https://www.youtube.com/channel/{r['yt_channel_id']}")
+                        found = True
+                        break
+            except urllib.error.HTTPError:
+                pass
+        if tw:
+            for it in tw(query=r["name"], first=5).get("data", []):
+                if norm(it["display_name"]) == norm(r["name"]):
+                    r["twitch_login"] = it["broadcaster_login"]
+                    r["platforms"] = "|".join(sorted(set(r["platforms"].split("|")) | {"twitch"}))
+                    log_lines.append(f"- {r['name']}: https://twitch.tv/{r['twitch_login']}")
+                    found = True
+                    break
+        if not found:
+            unresolved.append(r["name"])
+    if todo:
+        with (REG.parent / "resolved_log.md").open("a", encoding="utf-8") as f:
+            f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} (check these are the right channels)\n" + "\n".join(log_lines) + "\n")
+        old = (REG.parent / "unresolved.txt")
+        left = set(old.read_text(encoding="utf-8").split("\n")) if old.exists() else set()
+        left = (left | set(unresolved)) - {r["name"] for r in todo if r["yt_channel_id"] or r["twitch_login"]}
+        old.write_text("\n".join(sorted(x for x in left if x)) + "\n", encoding="utf-8")
+    log(f"listed creators resolved: {len(log_lines)} of {len(todo)}; unresolved: {len(unresolved)}")
+
+
 def main():
     reg = load()
     before = len(reg)
     load_seed(reg)
+    if os.environ.get("YT_API_KEY") or os.environ.get("TWITCH_CLIENT_ID"):
+        resolve_listed(reg)
     if os.environ.get("YT_API_KEY"):
         resolve_seeds(reg)
         harvest_youtube(reg)
