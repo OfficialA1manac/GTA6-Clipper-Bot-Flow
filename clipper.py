@@ -303,21 +303,20 @@ def duration(path):
     return float(r.stdout.strip())
 
 
-def render(src, start, length, dest, hook=""):
-    dest.parent.mkdir(parents=True, exist_ok=True)
+def render(src, start, length, dest, hook="", e=None):
+    """9:16 retention edit (zoom punch-ins, sound effects, reaction text, captions, progress bar); see fx.py."""
     start = max(0, min(start, duration(src) - length))
+    font = next((f for f in FONTS if Path(f).exists()), None)
+    import fx
+    try:
+        return fx.render(src, start, length, dest, hook, e, font)
+    except Exception as ex:
+        log("fx render failed, using plain render:", str(ex)[:200])
     fc = ("[0:v]split=2[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
           "boxblur=25:5[bg];[b]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2")
-    font = next((f for f in FONTS if Path(f).exists()), None)
-    if hook and font:
-        tf = dest.with_suffix(".txt")
-        tf.write_text("\n".join(textwrap.wrap(hook, 24)[:3]))
-        fc += (f",drawtext=fontfile={font}:textfile={tf}:fontcolor=white:fontsize=64:borderw=5:"
-               "bordercolor=black:x=(w-text_w)/2:y=200:line_spacing=12")
-    cmd = ["ffmpeg", "-y", "-v", "error", "-ss", str(start), "-t", str(length), "-i", str(src),
-           "-filter_complex", fc, "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(dest)]
-    subprocess.run(cmd, check=True)
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", str(start), "-t", str(length), "-i", str(src),
+                    "-filter_complex", fc, "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(dest)], check=True)
     return dest
 
 
@@ -406,7 +405,8 @@ def run(cfg, url, channel, title, inbox):
     for j in jobs:
         try:
             src = j["path"] or download(j, s["max_source_minutes"])
-            for k, start in enumerate(pick(energy(src), s["clips_per_video"], s["clip_seconds"])):
+            e = energy(src)
+            for k, start in enumerate(pick(e, s["clips_per_video"], s["clip_seconds"])):
                 recent = [p for p in posted["posted"] if time.time() - p["t"] < DAY]
                 yt_n = sum(1 for p in recent if p.get("yt_id"))
                 tt_n = sum(1 for p in recent if p.get("tt_id"))
@@ -414,7 +414,7 @@ def run(cfg, url, channel, title, inbox):
                     and yt_n < s.get("max_youtube_per_day", 6)
                 tt_ok = os.environ.get("TT_REFRESH_TOKEN") and tt_n < s.get("max_tiktok_per_day", 15)
                 hook = re.sub(r"(?i)\bgta\s*(6|vi)\b|[|\-–—:]", " ", j["title"]).strip()[:70]
-                f = render(src, start, s["clip_seconds"], OUT / "clips" / f"{j['id']}_{k}.mp4", hook)
+                f = render(src, start, s["clip_seconds"], OUT / "clips" / f"{j['id']}_{k}.mp4", hook, e)
                 queue_tiktok(f, f"{hook} #gta6 #gtavi #fyp")
                 notify(f"New clip from {j['channel']}\nSource: {j['url'] or j['id']}\nClip file: Actions > clip run > 'clips' artifact\nCaption: {hook} #gta6 #gtavi")
                 if len(recent) >= s["max_posts_per_day"] or not (yt_ok or tt_ok):

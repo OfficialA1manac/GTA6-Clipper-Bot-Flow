@@ -18,3 +18,6 @@ Then Actions -> enable workflows -> run `harvest`, then `scan`.
 ## The creator list
 `creators/registry.csv` fills over days/weeks (each run adds whoever is trending or live). Fill the `permission` column for creators who agreed; the clipper only uses rows with a permission note.
 Platforms keep unaudited API apps private until their audit passes.
+
+## Retention edit (fx.py)
+Every clip gets: opening hook text + "WAIT FOR THE END", zoom punch-ins on the loudest moments, synthesized sound effects (boom, honk, ding, womp, pop, whoosh; generated locally, no copyright), red reaction text, word-by-word captions (faster-whisper, profanity masked), and a progress bar that fills across the clip.
