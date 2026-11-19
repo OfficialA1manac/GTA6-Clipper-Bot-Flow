@@ -34,6 +34,10 @@ jobs:
           TT_CLIENT_KEY: ${{ secrets.TT_CLIENT_KEY }}
           TT_CLIENT_SECRET: ${{ secrets.TT_CLIENT_SECRET }}
           TT_REFRESH_TOKEN: ${{ secrets.TT_REFRESH_TOKEN }}
+          TWILIO_SID: ${{ secrets.TWILIO_SID }}
+          TWILIO_TOKEN: ${{ secrets.TWILIO_TOKEN }}
+          TWILIO_FROM: ${{ secrets.TWILIO_FROM }}
+          TWILIO_TO: ${{ secrets.TWILIO_TO }}
         run: |
           if [ "$IN_INBOX" = "true" ]; then python clipper.py run --inbox
           else python clipper.py run --url "$IN_URL" --channel "$IN_CHANNEL" --title "$IN_TITLE"; fi

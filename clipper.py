@@ -269,6 +269,22 @@ def post_tiktok(file, caption):
     return init["publish_id"]
 
 
+def notify(body):
+    """Text via Twilio if TWILIO_SID/TOKEN/FROM/TO are set; otherwise no-op."""
+    e = os.environ
+    if not all(e.get(k) for k in ("TWILIO_SID", "TWILIO_TOKEN", "TWILIO_FROM", "TWILIO_TO")):
+        return
+    import base64
+    req = urllib.request.Request(
+        f"https://api.twilio.com/2010-04-01/Accounts/{e['TWILIO_SID']}/Messages.json", method="POST",
+        data=urllib.parse.urlencode({"To": e["TWILIO_TO"], "From": e["TWILIO_FROM"], "Body": body[:1500]}).encode(),
+        headers={"Authorization": "Basic " + base64.b64encode(f"{e['TWILIO_SID']}:{e['TWILIO_TOKEN']}".encode()).decode()})
+    try:
+        urllib.request.urlopen(req, timeout=30)
+    except Exception as ex:
+        log(f"sms failed: {ex}")
+
+
 def queue_tiktok(file, caption):
     q = OUT / "queue"
     q.mkdir(parents=True, exist_ok=True)
@@ -298,6 +314,7 @@ def run(cfg, url, channel, title, inbox):
                 hook = re.sub(r"(?i)\bgta\s*(6|vi)\b|[|\-–—:]", " ", j["title"]).strip()[:70]
                 f = render(src, start, s["clip_seconds"], OUT / "clips" / f"{j['id']}_{k}.mp4", hook)
                 queue_tiktok(f, f"{hook} #gta6 #gtavi #fyp")
+                notify(f"New clip from {j['channel']}\nSource: {j['url'] or j['id']}\nClip file: Actions > clip run > 'clips' artifact\nCaption: {hook} #gta6 #gtavi")
                 if today >= s["max_posts_per_day"]:
                     log("daily cap reached; clip queued only"); continue
                 title_ = f"{hook} #GTA6 #Shorts"

@@ -11,7 +11,8 @@ Public repo = unlimited free Actions minutes. Secrets stay private.
 ## Setup
 Secrets (Settings -> Secrets and variables -> Actions):
 YT_API_KEY, YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN (scopes youtube.upload + youtube.readonly),
-TT_CLIENT_KEY, TT_CLIENT_SECRET, TT_REFRESH_TOKEN (scope video.publish), TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET.
+TT_CLIENT_KEY, TT_CLIENT_SECRET, TT_REFRESH_TOKEN (scope video.publish), TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET,
+Texts (optional, Twilio): TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM, TWILIO_TO. Each new clip sends you its source link by SMS.
 Then Actions -> enable workflows -> run `harvest`, then `scan`.
 
 ## The creator list
