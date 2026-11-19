@@ -365,9 +365,19 @@ def post_tiktok(file, caption):
     return init["publish_id"]
 
 
-def notify(body):
-    """Text via Twilio if TWILIO_SID/TOKEN/FROM/TO are set; otherwise no-op."""
+def notify(body, file=None):
+    """Phone alerts: Discord webhook (free, attaches the clip if under 24 MB) and/or Twilio SMS. Both optional."""
     e = os.environ
+    if e.get("DISCORD_WEBHOOK"):
+        import requests
+        try:
+            if file and Path(file).exists() and Path(file).stat().st_size < 24 * 1024 * 1024:
+                with open(file, "rb") as fh:
+                    requests.post(e["DISCORD_WEBHOOK"], data={"content": body[:1900]}, files={"file": (Path(file).name, fh)}, timeout=120)
+            else:
+                requests.post(e["DISCORD_WEBHOOK"], json={"content": body[:1900]}, timeout=30)
+        except Exception as ex:
+            log(f"discord failed: {ex}")
     if not all(e.get(k) for k in ("TWILIO_SID", "TWILIO_TOKEN", "TWILIO_FROM", "TWILIO_TO")):
         return
     import base64
@@ -419,7 +429,7 @@ def run(cfg, url, channel, title, inbox):
                 hook = re.sub(r"(?i)\bgta\s*(6|vi)\b|[|\-–—:]", " ", j["title"]).strip()[:70]
                 f = render(src, start, clip_len, OUT / "clips" / f"{j['id']}_{k}.mp4", hook, e)
                 queue_tiktok(f, f"{hook} #gta6 #gtavi #fyp")
-                notify(f"New clip from {j['channel']}\nSource: {j['url'] or j['id']}\nClip file: Actions > clip run > 'clips' artifact\nCaption: {hook} #gta6 #gtavi")
+                notify(f"New clip from {j['channel']}\nSource: {j['url'] or j['id']}\nCaption to paste: {hook} #gta6 #gtavi", f)
                 if len(recent) >= s["max_posts_per_day"] or not (yt_ok or tt_ok):
                     log("daily cap reached or no upload keys; clip queued only"); continue
                 title_ = f"{hook} #GTA6 #Shorts"

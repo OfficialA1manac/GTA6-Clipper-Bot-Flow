@@ -27,3 +27,6 @@ Every clip gets: opening hook text + "WAIT FOR THE END", zoom punch-ins on the l
 - Any free always-on machine works: Oracle Cloud Always Free VM, an old PC, or Termux on Android (`pkg install python ffmpeg git`, then `pip install -r requirements.txt`).
 - Docker: `docker build -t gta6 . && docker run -d --restart always --env-file .env -v $PWD/state:/app/state -v $PWD/out:/app/out gta6`
 - Text alerts via Twilio work the same; without Twilio read `out/status.md`.
+
+## Phone alerts
+Set `DISCORD_WEBHOOK` (Discord server > channel settings > Integrations > Webhooks > New > Copy URL). Each new clip arrives in Discord with the finished video attached (if under 24 MB), the source link and a caption to paste. Twilio SMS is optional. `serve.py` scans every 2 minutes by default (`SCAN_EVERY=120`); GitHub Actions cron cannot go below 5 minutes.

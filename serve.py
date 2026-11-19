@@ -1,7 +1,7 @@
 """Run the whole pipeline without GitHub Actions: python serve.py
 Loops forever on any machine (PC, free cloud VM, Termux on Android, Docker).
 Reads keys from a .env file (KEY=value per line) or normal environment variables.
-scan every 10 min -> clip+upload; harvest every 6h; status report every hour (printed + saved to out/status.md)."""
+scan every SCAN_EVERY seconds (default 120 = 2 min) -> clip+upload; harvest every 6h; status report every hour (printed + saved to out/status.md)."""
 import json, os, subprocess, sys, time
 from pathlib import Path
 
@@ -56,4 +56,4 @@ if __name__ == "__main__":
                 tick_check(); last["check"] = now
         except Exception as e:
             print("loop error:", e, flush=True)
-        time.sleep(600)
+        time.sleep(int(os.environ.get("SCAN_EVERY", "120")))
