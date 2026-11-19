@@ -58,9 +58,44 @@ def registry_sources():
                 for r in csv.DictReader(f) if (r.get("permission") or "").strip() and r.get("yt_channel_id")]
 
 
+def file_sources():
+    """permitted.txt: one creator per line. YouTube channel URL / @handle / UC id, or twitch.tv/login."""
+    p = ROOT / "permitted.txt"
+    if not p.exists():
+        return []
+    cache, out, changed = sload("resolved", {}), [], False
+    for raw in p.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#")[0].strip()
+        if not line:
+            continue
+        note = f"listed in permitted.txt: {line}"
+        if "twitch.tv/" in line or line.lower().startswith("twitch:"):
+            login = line.rstrip("/").split("/")[-1].replace("twitch:", "").strip().lower()
+            out.append({"name": login, "twitch_login": login, "permission": note})
+            continue
+        m = re.search(r"(UC[\w-]{22})", line)
+        if m:
+            out.append({"name": cache.get(line, {}).get("name", m.group(1)), "channel_id": m.group(1), "permission": note})
+            continue
+        if line not in cache:
+            url = line if line.startswith("http") else "https://www.youtube.com/" + line.lstrip("/")
+            ents = ytdlp_list(url.rstrip("/") + "/videos", 1)
+            cid = ents and (ents[0].get("channel_id") or ents[0].get("playlist_channel_id"))
+            if cid:
+                cache[line] = {"id": cid, "name": ents[0].get("channel") or ents[0].get("uploader") or line}
+                changed = True
+        if line in cache:
+            out.append({"name": cache[line]["name"], "channel_id": cache[line]["id"], "permission": note})
+        else:
+            log(f"could not resolve {line}")
+    if changed:
+        ssave("resolved", cache)
+    return out
+
+
 def permitted_sources(cfg):
     out, ids = [], set()
-    for src in (cfg.get("sources") or []) + registry_sources():
+    for src in (cfg.get("sources") or []) + registry_sources() + [x for x in file_sources() if x.get("channel_id")]:
         if not str(src.get("permission", "")).strip():
             log(f"SKIP {src.get('name')}: no 'permission' recorded"); continue
         if src["channel_id"] in ids:
@@ -149,12 +184,14 @@ def crawl(cfg, srcs, seen, paused):
 
 
 def registry_twitch():
+    extra = [{"name": x["name"], "login": x["twitch_login"]} for x in file_sources() if x.get("twitch_login")]
     p = ROOT / "creators" / "registry.csv"
     if not p.exists():
-        return []
+        return extra
     with p.open(encoding="utf-8", newline="") as f:
-        return [{"name": r["name"], "login": r["twitch_login"]} for r in csv.DictReader(f)
+        rows = [{"name": r["name"], "login": r["twitch_login"]} for r in csv.DictReader(f)
                 if (r.get("permission") or "").strip() and r.get("twitch_login")]
+    return extra + rows
 
 
 def crawl_twitch(cfg, cursor, paused, seen, batch=20):

@@ -1,0 +1,6 @@
+# One creator per line. Paste the ones who gave you permission. Lines starting with # are ignored.
+# YouTube: channel URL, @handle, or the UC... channel id.   Twitch: twitch.tv/login
+# Examples (delete the # to use):
+# https://www.youtube.com/@SomeCreator
+# @AnotherCreator
+# twitch.tv/somestreamer

@@ -44,6 +44,7 @@ jobs:
         run: |
           git config user.name clipper-bot; git config user.email clipper-bot@users.noreply.github.com
           git add state/seen.json state/leads.json
+          [ -f state/resolved.json ] && git add state/resolved.json || true
           if ! git diff --cached --quiet; then
             git commit -m "state: seen"
             for i in 1 2 3; do git pull --rebase -X theirs && git push && break || sleep 5; done

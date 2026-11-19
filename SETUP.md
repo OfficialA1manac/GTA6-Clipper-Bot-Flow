@@ -18,7 +18,10 @@ Menu names can shift slightly; follow the idea if a label differs.
 1. dev.twitch.tv/console -> Register Your Application (OAuth redirect `http://localhost`, category Application Integration).
 2. Copy Client ID, generate a Client Secret. Add secrets `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`.
 
-## 3. Run the harvest, then add permitted creators
+## 3. Add the creators who agreed (permitted.txt)
+Open `permitted.txt` in the GitHub app, paste one creator per line (YouTube channel link, @handle, or twitch.tv/name), commit. The next scan picks them up and resolves the channel ids by itself.
+
+## 3b. Optional: run the harvest for a bigger candidate list
 Actions -> **harvest** -> Run workflow. It fills `creators/registry.csv` (grows every 6h).
 For each creator who agreed, put a note in the `permission` column (edit file in the GitHub app), or add them under `sources:` in `sources.yaml`.
 The scanner only clips creators with a permission note.
