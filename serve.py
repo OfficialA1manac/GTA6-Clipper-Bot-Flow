@@ -53,6 +53,17 @@ def web():
             u = up.urlparse(self.path); q = dict(up.parse_qsl(u.query))
             host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host", "")
             cb = f"https://{host}/tiktok/callback"
+            if u.path in ("/privacy", "/terms"):
+                who = os.environ.get("OWNER_NAME", "the site owner")
+                body = (f"{'Privacy Policy' if u.path == '/privacy' else 'Terms of Service'} - GTA6 Clipper\n\n"
+                        f"GTA6 Clipper is a personal tool operated by {who}. It downloads short highlights from creators who "
+                        "gave the operator permission, edits them, and posts them to the operator's own accounts. "
+                        "It collects no data from visitors, sets no cookies and shares nothing with third parties. "
+                        "Authorization tokens for the operator's own TikTok and YouTube accounts are stored only in the "
+                        "operator's private server settings. Contact the operator through the linked accounts to request "
+                        "removal of any clip.\n").encode()
+                self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers()
+                self.wfile.write(body); return
             if u.path == "/tiktok/login":  # one-time helper: gets your TikTok refresh token on a phone
                 url = "https://www.tiktok.com/v2/auth/authorize/?" + up.urlencode({
                     "client_key": os.environ.get("TT_CLIENT_KEY", ""), "scope": "user.info.basic,video.publish,video.upload",
