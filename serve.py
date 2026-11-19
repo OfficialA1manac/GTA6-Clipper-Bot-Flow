@@ -49,6 +49,24 @@ def web():
     from http.server import BaseHTTPRequestHandler, HTTPServer
     class H(BaseHTTPRequestHandler):
         def do_GET(self):
+            import urllib.parse as up
+            u = up.urlparse(self.path); q = dict(up.parse_qsl(u.query))
+            host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host", "")
+            cb = f"https://{host}/tiktok/callback"
+            if u.path == "/tiktok/login":  # one-time helper: gets your TikTok refresh token on a phone
+                url = "https://www.tiktok.com/v2/auth/authorize/?" + up.urlencode({
+                    "client_key": os.environ.get("TT_CLIENT_KEY", ""), "scope": "user.info.basic,video.publish,video.upload",
+                    "response_type": "code", "redirect_uri": cb, "state": "gta6"})
+                self.send_response(302); self.send_header("Location", url); self.end_headers(); return
+            if u.path == "/tiktok/callback":
+                import requests
+                r = requests.post("https://open.tiktokapis.com/v2/oauth/token/", timeout=30, data={
+                    "client_key": os.environ.get("TT_CLIENT_KEY", ""), "client_secret": os.environ.get("TT_CLIENT_SECRET", ""),
+                    "code": q.get("code", ""), "grant_type": "authorization_code", "redirect_uri": cb}).json()
+                msg = ("Copy this into the TT_REFRESH_TOKEN setting:\n\n" + r["refresh_token"]) if r.get("refresh_token") \
+                    else "TikTok said: " + json.dumps({k: v for k, v in r.items() if k != "access_token"})
+                self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers()
+                self.wfile.write(msg.encode()); return
             f = ROOT / "out" / "status.md"
             body = (f.read_text() if f.exists() else "running").encode()
             self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers()

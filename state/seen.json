@@ -1,1 +1,5 @@
-{"seen": []}
+{
+ "seen": [],
+ "cursor": 0,
+ "tcursor": 0
+}
