@@ -1,5 +1,5 @@
 settings:
-  clip_seconds: 40          # Shorts length
+  clip_seconds: 65         # every clip is at least 1:00 (minimum enforced in code)
   clips_per_video: 2        # best moments per source video
   max_age_hours: 72         # ignore older uploads
   max_source_minutes: 90    # skip longer VODs (download size)

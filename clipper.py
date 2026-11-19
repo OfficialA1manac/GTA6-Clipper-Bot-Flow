@@ -405,8 +405,11 @@ def run(cfg, url, channel, title, inbox):
     for j in jobs:
         try:
             src = j["path"] or download(j, s["max_source_minutes"])
+            clip_len = max(61, int(s["clip_seconds"]))
+            if duration(src) < clip_len + 5:
+                log("source shorter than", clip_len, "s; skipped"); continue
             e = energy(src)
-            for k, start in enumerate(pick(e, s["clips_per_video"], s["clip_seconds"])):
+            for k, start in enumerate(pick(e, s["clips_per_video"], clip_len)):
                 recent = [p for p in posted["posted"] if time.time() - p["t"] < DAY]
                 yt_n = sum(1 for p in recent if p.get("yt_id"))
                 tt_n = sum(1 for p in recent if p.get("tt_id"))
@@ -414,7 +417,7 @@ def run(cfg, url, channel, title, inbox):
                     and yt_n < s.get("max_youtube_per_day", 6)
                 tt_ok = os.environ.get("TT_REFRESH_TOKEN") and tt_n < s.get("max_tiktok_per_day", 15)
                 hook = re.sub(r"(?i)\bgta\s*(6|vi)\b|[|\-–—:]", " ", j["title"]).strip()[:70]
-                f = render(src, start, s["clip_seconds"], OUT / "clips" / f"{j['id']}_{k}.mp4", hook, e)
+                f = render(src, start, clip_len, OUT / "clips" / f"{j['id']}_{k}.mp4", hook, e)
                 queue_tiktok(f, f"{hook} #gta6 #gtavi #fyp")
                 notify(f"New clip from {j['channel']}\nSource: {j['url'] or j['id']}\nClip file: Actions > clip run > 'clips' artifact\nCaption: {hook} #gta6 #gtavi")
                 if len(recent) >= s["max_posts_per_day"] or not (yt_ok or tt_ok):
