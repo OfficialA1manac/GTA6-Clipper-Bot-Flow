@@ -24,6 +24,18 @@ FONTS = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 DAY = 86400
 
 
+def _ytdlp_cookies():
+    """Set YT_COOKIES (Netscape cookies.txt contents) to get past YouTube's cloud-IP bot check."""
+    c = os.environ.get("YT_COOKIES", "").strip()
+    if c:
+        cdir = Path.home() / ".config" / "yt-dlp"; cdir.mkdir(parents=True, exist_ok=True)
+        (cdir / "cookies.txt").write_text(c + "\n")
+        (cdir / "config").write_text(f"--cookies {cdir / 'cookies.txt'}\n")
+
+
+_ytdlp_cookies()
+
+
 PERMITTED_KW = re.compile(r"\bgta\b|grand theft auto|vice city|leonida|gta\s*(6|vi)\b", re.I)
 NOT_GTA6 = re.compile(r"gta\s*(5|v)\b|gtav\b|gta\s*online|fivem|san andreas|\bgta\s*iv\b|gta\s*4", re.I)
 
@@ -60,13 +72,55 @@ def blocked_re(s):
     return re.compile("|".join(re.escape(w) for w in words), re.I) if words else None
 
 
-def registry_sources():
+def _norm(x):
+    return re.sub(r"[^a-z0-9]", "", (x or "").lower())
+
+
+def registry_rows():
     p = ROOT / "creators" / "registry.csv"
     if not p.exists():
         return []
     with p.open(encoding="utf-8", newline="") as f:
-        return [{"name": r["name"], "channel_id": r["yt_channel_id"], "permission": r["permission"]}
-                for r in csv.DictReader(f) if (r.get("permission") or "").strip() and r.get("yt_channel_id")]
+        return [r for r in csv.DictReader(f) if (r.get("permission") or "").strip()]
+
+
+def resolve_registry(limit=12):
+    """Permitted registry rows usually have a name but no channel id / twitch login, so nothing was ever scanned.
+    Resolve a few per run (yt-dlp, no API key) by trying @key on YouTube and twitch.tv/key; cached in state/resolved.json."""
+    cache, changed, budget = sload("resolved", {}), False, limit
+    for r in registry_rows():
+        if r.get("yt_channel_id") and r.get("twitch_login"):
+            continue
+        k = "reg:" + r["key"]
+        c = cache.get(k)
+        if c and (c.get("yt") or c.get("tw") or time.time() - c.get("t", 0) < 7 * DAY):
+            continue
+        if budget <= 0:
+            break
+        budget -= 1
+        ent = {"yt": r.get("yt_channel_id") or "", "yt_name": "", "tw": r.get("twitch_login") or "", "t": time.time()}
+        key = r["key"].strip().lower()
+        if not ent["yt"]:
+            for e in ytdlp_list(f"https://www.youtube.com/@{key}/videos", 1)[:1]:
+                cid = e.get("channel_id") or e.get("playlist_channel_id") or ""
+                nm = e.get("channel") or e.get("uploader") or ""
+                if cid and (_norm(key) in _norm(nm) or _norm(nm) in _norm(key) or _norm(r["name"]) in _norm(nm)):
+                    ent["yt"], ent["yt_name"] = cid, nm
+        if not ent["tw"] and ytdlp_list(f"https://www.twitch.tv/{key}/videos?filter=archives&sort=time", 1):
+            ent["tw"] = key
+        cache[k] = ent; changed = True
+        log(f"resolved {r['name']}: yt={ent['yt'] or '-'} twitch={ent['tw'] or '-'}")
+    if changed:
+        ssave("resolved", cache)
+
+
+def registry_sources():
+    cache, out = sload("resolved", {}), []
+    for r in registry_rows():
+        cid = r.get("yt_channel_id") or cache.get("reg:" + r["key"], {}).get("yt", "")
+        if cid:
+            out.append({"name": r["name"], "channel_id": cid, "permission": r["permission"]})
+    return out
 
 
 def file_sources():
@@ -196,12 +250,12 @@ def crawl(cfg, srcs, seen, paused):
 
 def registry_twitch():
     extra = [{"name": x["name"], "login": x["twitch_login"]} for x in file_sources() if x.get("twitch_login")]
-    p = ROOT / "creators" / "registry.csv"
-    if not p.exists():
-        return extra
-    with p.open(encoding="utf-8", newline="") as f:
-        rows = [{"name": r["name"], "login": r["twitch_login"]} for r in csv.DictReader(f)
-                if (r.get("permission") or "").strip() and r.get("twitch_login")]
+    cache = sload("resolved", {})
+    rows = []
+    for r in registry_rows():
+        login = r.get("twitch_login") or cache.get("reg:" + r["key"], {}).get("tw", "")
+        if login:
+            rows.append({"name": r["name"], "login": login})
     return extra + rows
 
 
@@ -237,6 +291,7 @@ def save_leads(new):
 
 
 def scan(cfg):
+    resolve_registry(int(os.environ.get("RESOLVE_PER_SCAN", "12")))
     st = sload("seen", {"seen": [], "cursor": 0, "tcursor": 0})
     seen, paused = set(st["seen"]), paused_channels()
     srcs = permitted_sources(cfg)
